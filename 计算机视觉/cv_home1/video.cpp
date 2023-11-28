@@ -11,7 +11,9 @@ using namespace std;
 using namespace cv;
 
 
-bool GradientEffect = true;//实现图片切换的渐变效果
+bool GradientEffect = false;//实现图片切换的渐变效果
+bool GridEffect = true;
+
 vector<Mat> images_mrege;
 
 string path0 = "../data";
@@ -33,6 +35,7 @@ int title_thickness = 3;
 int subtitle_thickness = 2;
 int lineType = LINE_AA;
 bool bottomLeftStart = false;
+int grid_width = 100;
 // linux 获取图像数据
 vector<string> getFiles(string path)
 {
@@ -51,6 +54,59 @@ vector<string> getFiles(string path)
     }
     closedir(pDir);
     return address;
+}
+Mat getGridImage(Mat image, int gridWidth){
+    int h = image.rows;
+    int w = image.cols;
+    Mat change = image;
+    for(int row = 0; row < h; row++){
+        for(int col = 0; col < w; col++){
+            if(row%100<=gridWidth){
+                change.at<Vec3b>(row, col)[0] = 0;
+				change.at<Vec3b>(row, col)[1] = 0;
+				change.at<Vec3b>(row, col)[2] = 0;              
+            }
+        }
+    }
+    return change;
+}
+Mat getGridImage_2(Mat image, int gridWidth){
+    int h = image.rows;
+    int w = image.cols;
+    Mat change = image;
+    for(int row = 0; row < h; row++){
+        for(int col = 0; col < w; col++){
+            if(row%100>gridWidth){
+                change.at<Vec3b>(row, col)[0] = 0;
+				change.at<Vec3b>(row, col)[1] = 0;
+				change.at<Vec3b>(row, col)[2] = 0;              
+            }
+        }
+    }
+    return change;
+}
+Mat getGridImage_1(Mat image, int realWidth){
+    int h = image.rows;
+    int w = image.cols;
+    Mat record = image;
+    Mat black = image;
+    for(int row = 0; row < h; row++){
+        for(int col = 0; col < w; col++){
+            black.at<Vec3b>(row, col)[0] = 0;
+			black.at<Vec3b>(row, col)[1] = 0;
+			black.at<Vec3b>(row, col)[2] = 0;
+        }
+    }
+    for(int row = 0; row < h; row++){
+        for(int col = 0; col < w; col++){
+            if(row%100>realWidth){
+               black.at<Vec3b>(row, col) = image.at<Vec3b>(row, col);
+			   //black.at<Vec3b>(row, col)[1] = record.at<Vec3b>(row, col)[1];
+			   //black.at<Vec3b>(row, col)[2] = record.at<Vec3b>(row, col)[2];
+            }
+        }
+    }
+    return black;
 }
 Mat Gradient_effect(Mat image1, Mat image2){
    double alpha = 0.5;
@@ -89,6 +145,7 @@ int main()
     bottom_start = Point(width * 0.6 - sub_title.length() * subtitle_scale * 8, height - subtitle_scale * 40);
     middle_start = Point(width * 0.6 - title.length() * title_scale * 8, height * 0.6);
     Size size = Size(width, height);
+    cout<<"fps = "<<fps<<endl;
 
     // resize image
     for (int i = 0; i < images_address.size(); i++)
@@ -98,9 +155,9 @@ int main()
         putText(image, sub_title, bottom_start, fontFace, subtitle_scale, black, subtitle_thickness, lineType, bottomLeftStart);
         images.push_back(image);
     }
-
-    VideoWriter Writer(result_path + "/output.avi", VideoWriter::fourcc('D', 'I', 'V', 'X'), fps, size, true);
-
+    
+    //VideoWriter Writer(result_path + "/output_gradient.avi", VideoWriter::fourcc('D', 'I', 'V', 'X'), fps, size, true);
+    VideoWriter Writer(result_path + "/output_grid.avi", VideoWriter::fourcc('D', 'I', 'V', 'X'), fps, size, true);
     // 写入文字
     Mat title_img(height, width, CV_8UC3, black);
     putText(title_img, title, middle_start, fontFace, title_scale, white, title_thickness, lineType, bottomLeftStart);
@@ -112,6 +169,9 @@ int main()
     // 写入图像
     for (int i = 0; i < images.size() - 1; i++)
     {   
+
+        int height_num = images[i].rows;
+        int width_num = images[i].cols;
         //写入给定的图像
         for (int k = 0; k < 2 * fps; k++)
         {
@@ -125,8 +185,33 @@ int main()
             Writer.write(merge);
            }
         }
+        if(GridEffect){
+           Mat trans1 = images[i];
+        //Mat trans2 = images[i+1];
+        //Mat trans = trans2;
+        //vector<Mat> trans;
+        for(int m = 0; m < grid_width; m++){
+            trans1 = getGridImage(trans1,m);
+            //trans2 = getGridImage(images[i+1], 100-m);
+            Writer.write(trans1);
+            //Writer.write(trans2);
+        }
+        
+            
+
+        }
+        // for(int m = 0; m < grid_width; m++){
+        //     trans2 = getGridImage_1(trans,m);
+        //     //trans.push_back(trans2);
+        //     imshow("a", trans2);
+        //     waitKey();
+        //     //Writer.write(trans2);
+        // }
+        
         
     }
+
+
     //写入最后一张图像
     for (int i = 0; i < 2 * fps; i++)
     {
@@ -145,7 +230,12 @@ int main()
         video_capture >> video_frame;
     } while (!video_frame.empty());
 
-    cout << "输出的合成视频位于：" << result_path << "/output.avi" << endl;
+    if(GradientEffect){
+       cout << "输出的合成视频位于：" << result_path << "/output_gradient.avi" << endl;
+    }
+    if(GridEffect){
+       cout << "输出的合成视频位于：" << result_path << "/output_grid.avi" << endl;
+    }
 
     video_capture.release();
 
