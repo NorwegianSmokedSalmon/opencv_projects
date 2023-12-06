@@ -6,7 +6,6 @@
 #include <sys/io.h>
 #include <sys/types.h>
 #include <vector>
-#include <sys/io.h>
 #include <opencv2/imgproc/types_c.h>
 #include <opencv2/highgui/highgui_c.h> 
 #include <opencv2/videoio/legacy/constants_c.h>
@@ -15,10 +14,15 @@
 using namespace std;
 using namespace cv;
 string path0 = "../data";
+string out_path = "../result";
 vector<string> image_address;
 vector<Mat> images;
-vector<vector<Point>> contours;//存储边缘点
-
+bool Binarization = false;
+vector<Mat> output_images;
+CvMemStorage* container = cvCreateMemStorage();
+CvSeq* contours = cvCreateSeq(CV_SEQ_ELTYPE_POINT, sizeof(CvSeq), sizeof(CvPoint), container);//存储边缘
+CvSize size;//椭圆尺寸
+CvPoint center; //椭圆中心
 // linux 获取图像数据
 vector<string> getFiles(string path)
 {
@@ -39,138 +43,96 @@ vector<string> getFiles(string path)
     return address;
 }
 
-//process the image of src_dir, draw ellipses and output the image
-// void fitEllipse(string src_dir)
-// {
-// 	Mat original_mat_Image = imread(src_dir);
-// 	Mat gray_mat_Image;
-// 	if (original_mat_Image.channels() == 3)
-// 	{
-// 		//get the grayscale image
-// 		cvtColor(original_mat_Image, gray_mat_Image, COLOR_RGB2GRAY);
-// 	}
-// 	else
-// 	{
-// 		gray_mat_Image = original_mat_Image.clone();
-// 	}
-// 	//turn Mat to IplImage
-// 	IplImage original_Ipl_Image = cvIplImage(original_mat_Image);
-// 	IplImage gray_Ipl_Image = cvIplImage(gray_mat_Image);
-// 	IplImage* gray_Ipl_pointer = &gray_Ipl_Image;
-// 	IplImage* original_Ipl_pointer = &original_Ipl_Image;
+//图像预处理的函数,处理成灰度图像
+Mat gray_processing(Mat src){
+    Mat gray_image;
+	if(src.channels()==3){
+		cvtColor(src, gray_image, COLOR_RGB2GRAY);
+	}
+	else{
+		gray_image = src.clone();
+	}
+	return gray_image;
+}
 
-// 	//create contour
-// 	CvMemStorage* storage = cvCreateMemStorage();
-// 	CvSeq* contour = cvCreateSeq(CV_SEQ_ELTYPE_POINT, sizeof(CvSeq), sizeof(CvPoint), storage);
+//图像二值化处理
+Mat binary_processing(Mat src, double Grayscale_threshold){
+    Mat binary;
+	threshold(src, binary, Grayscale_threshold, 255, THRESH_BINARY);
+	return binary;
+}
 
-// 	//use cvCanny() to find the edges of image and identify it in the graph
-// 	IplImage* canny_image = cvCloneImage(gray_Ipl_pointer);
-// 	cvCanny(gray_Ipl_pointer, canny_image, 125, 350, 3);
+//拟合椭圆，返回原图+拟合的椭圆的Mat图像类型
+Mat fitEllipse(Mat src,Mat src_gray)//原图与原图的灰度图
+{
 
-// 	//get contour
-// 	cvFindContours(canny_image, storage, &contour, sizeof(CvContour), CV_RETR_LIST, CV_CHAIN_APPROX_NONE, cvPoint(0, 0));
+	//将 Mat 类型图像转换为 IplImage
+	IplImage src_IplImage = cvIplImage(src);
+	IplImage* src_IplImage_pointer = &src_IplImage;
+	IplImage gray_IplImage = cvIplImage(src_gray);
+	IplImage* gray_IplImage_pointer = &gray_IplImage;
 	
-// 	//the image to be drwan with ellipses
-// 	IplImage* output = cvCloneImage(original_Ipl_pointer);
-// 	//draw ellipses
-// 	while(contour)
-// 	{
-// 		int count = contour->total; //the number of dots in the contour
-// 		//avoid too small ellipse
-// 		if (count >= 6)
-// 		{
-// 			CvMat* points_f = cvCreateMat(1, count, CV_32FC2);
-// 			CvMat points_i = cvMat(1, count, CV_32SC2, points_f->data.ptr);
-// 			cvCvtSeqToArray(contour, points_f->data.ptr, CV_WHOLE_SEQ);
-// 			cvConvert(&points_i, points_f);
+	//canny边缘检测
+	IplImage* canny_image = cvCloneImage(gray_IplImage_pointer);
+	cvCanny(gray_IplImage_pointer, canny_image, 50, 350, 3);
 
-// 			//ellipse fitting
-// 			CvBox2D box = cvFitEllipse2(points_f);
+	//生成轮廓
+	cvFindContours(canny_image, container, &contours, sizeof(CvContour), CV_RETR_LIST, CV_CHAIN_APPROX_NONE, cvPoint(0, 0));
+	
+	//输出椭圆曲线的图
+	IplImage* out = cvCloneImage(src_IplImage_pointer);
 
-// 			//locate the center and size of ellipse
-// 			CvPoint center = cvPointFrom32f(box.center);
-// 			CvSize size;
-// 			size.width = cvRound(box.size.width * 0.5);
-// 			size.height = cvRound(box.size.height * 0.5);
-// 			//draw ellipse
-// 			cvEllipse(output, center, size, box.angle, 0, 360, cvScalar(0, 255, 0));
-// 			cvReleaseMat(&points_f);
-// 		}
-// 		contour = contour->h_next;
-// 	}
-
-// 	//store it into original path
-// 	// string filename;
-// 	// int i = 0;
-// 	// while (i < src_dir.size() && src_dir[i] != '.')
-// 	// {
-// 	// 	filename += src_dir[i];
-// 	// 	i++;
-// 	// }
-// 	// filename += "_ellipse.png";
-// 	// cout << "output: " << filename << endl;
-// 	// Mat Mat_output = cvarrToMat(output);
-// 	// imwrite(filename, Mat_output);
-//     string path = "../result";
-    
-// }
+	//画椭圆
+	while(contours!=nullptr)
+	{
+		int num = contours->total; //轮廓上的点数
+		//最少需要6个方程才能拟合
+		if (num >= 6)
+		{ 
+			
+			CvMat* points = cvCreateMat(1, num, CV_32FC2);
+			CvMat points_mat = cvMat(1, num, CV_32SC2, points->data.ptr);
+			cvCvtSeqToArray(contours, points->data.ptr, CV_WHOLE_SEQ);
+			//将IplImage里的uchar类型数据转换，提高精度
+			cvConvert(&points_mat, points); 
+			//调用cvFitEllipse2进行椭圆拟合
+			CvBox2D box = cvFitEllipse2(points);
+			//更新，确定椭圆的中心和尺寸
+			center = cvPointFrom32f(box.center);
+			size.width = cvRound(box.size.width * 0.5);
+			size.height = cvRound(box.size.height * 0.5);
+			//画椭圆
+			cvEllipse(out, center, size, box.angle, 0, 360, cvScalar(255, 255, 0));
+			cvReleaseMat(&points);
+		}
+		contours = contours->h_next;
+	}
+	Mat result = cvarrToMat(out);
+    return result;
+}
 
 int main(){
-    //load images
+    //读取图像
     image_address = getFiles(path0);
     for(int i = 0; i < image_address.size();i++){
         cout<<image_address[i]<<endl;
         Mat image = imread(image_address[i]);
         images.push_back(image);
-        imshow("image", images[i]);
-        waitKey(0);
     }
-    // for (int i = 0; i < image_address.size(); i++)
-	// 	{
-	// 		//process the image of images_addr[i]
-	// 		fitEllipse(image_address[i]);
-	// 	}
     Mat src1 = images[0];
-    Mat src2 = images[1];
-    //使用canny检测出边缘
-	Mat edge1;
-    Mat edge2;
-	Canny(src1,edge1,30,70);
-    Canny(src2,edge2,30,70);
-	imshow("canny边缘1",edge1);
-    waitKey(0);
-    imshow("canny边缘2",edge2);
-    waitKey(0);
-
-    //边缘追踪，没有存储边缘的组织结构
-	findContours(edge2, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
-	Mat cimage1 = Mat::zeros(edge2.size(), CV_8UC3);
- 
-	for(size_t i = 0; i < contours.size(); i++)
-	{
-		//拟合的点至少为6
-		size_t count = contours[i].size();
-		if( count < 6 )
-			continue;
- 
-		//椭圆拟合
-		RotatedRect box = fitEllipse(contours[i]);
- 
-		//如果长宽比大于30，则排除，不做拟合
-		if( MAX(box.size.width, box.size.height) > MIN(box.size.width, box.size.height)*30 )
-			continue;
- 
-		//画出追踪出的轮廓
-		drawContours(cimage1, contours, (int)i, Scalar::all(255), 1, 8);
-		
-		//画出拟合的椭圆
-		ellipse(cimage1, box, Scalar(0,255,0), 1, CV_AA);
-	}
-	imshow("拟合结果1", cimage1);
- 
-	waitKey();
-    
-
-
+	Mat src2 = images[1];
+	//灰度处理
+	Mat src1_gray = gray_processing(src1);
+	Mat src2_gray = gray_processing(src2);
+	//进行椭圆拟合并在窗口上展示
+    Mat out1 = fitEllipse(src1, src1_gray);
+	Mat out2 = fitEllipse(src2, src2_gray);
+    imshow("result1", out1);
+    waitKey();
+	imshow("result2", out2);
+    waitKey();
+	//存储图像
+    imwrite(out_path+"/result1.png", out1);
+	imwrite(out_path+"/result2.png", out2);
     return 0;
 }
